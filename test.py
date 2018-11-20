@@ -23,11 +23,13 @@ img_transform = transforms.Compose(
      transforms.Normalize(mean=opt.MEAN, std=opt.STD)])
 mask_transform = transforms.Compose(
     [transforms.Resize(size=size), transforms.ToTensor()])
+label_dict = {}
 
-dataset_val = Places2(args.root, img_transform, mask_transform, 'val')
+dataset_val = Places2(args.root, img_transform, mask_transform, 'val', label_dict)
 
 model = PConvUNet().to(device)
 load_ckpt(args.snapshot, [('model', model)])
 
 model.eval()
 evaluate(model, dataset_val, device, 'result.jpg')
+evaluate_acc(model, dataset_val, device)

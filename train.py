@@ -2,6 +2,7 @@ import argparse
 import numpy as np
 import os
 import torch
+from torch import nn
 from tensorboardX import SummaryWriter
 from torch.utils import data
 from torchvision import transforms
@@ -16,6 +17,7 @@ from places2 import Places2
 from util.io import load_ckpt
 from util.io import save_ckpt
 
+import json
 
 class InfiniteSampler(data.sampler.Sampler):
     def __init__(self, num_samples):
@@ -56,6 +58,8 @@ parser.add_argument('--log_interval', type=int, default=10)
 parser.add_argument('--image_size', type=int, default=256)
 parser.add_argument('--resume', type=str)
 parser.add_argument('--finetune', action='store_true')
+parser.add_argument('--classify', action='store_true')
+
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True
@@ -76,8 +80,15 @@ img_tf = transforms.Compose(
 mask_tf = transforms.Compose(
     [transforms.Resize(size=size), transforms.ToTensor()])
 
-dataset_train = Places2(args.root, args.mask_root, img_tf, mask_tf, 'train')
-dataset_val = Places2(args.root, args.mask_root, img_tf, mask_tf, 'val')
+if args.classify:
+    src = os.path.join(args.root, 'dict.json')
+    with open(src) as fr:
+        label_dict = json.load(fr.read())
+else:
+    label_dict = None
+
+dataset_train = Places2(args.root, args.mask_root, img_tf, mask_tf, 'train', label_dict)
+dataset_val = Places2(args.root, args.mask_root, img_tf, mask_tf, 'val', label_dict)
 
 iterator_train = iter(data.DataLoader(
     dataset_train, batch_size=args.batch_size,
@@ -95,7 +106,8 @@ else:
 start_iter = 0
 optimizer = torch.optim.Adam(
     filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
-criterion = InpaintingLoss(VGG16FeatureExtractor()).to(device)
+criterion = InpaintingLoss(VGG16FeatureExtractor()).to(device) if not args.classify \
+        else nn.CrossEntropyLoss()
 
 if args.resume:
     start_iter = load_ckpt(
@@ -107,16 +119,24 @@ if args.resume:
 for i in tqdm(range(start_iter, args.max_iter)):
     model.train()
 
-    image, mask, gt = [x.to(device) for x in next(iterator_train)]
-    output, _ = model(image, mask)
-    loss_dict = criterion(image, mask, output, gt)
+    image, mask, gt, label = [x.to(device) for x in next(iterator_train)]
 
-    loss = 0.0
-    for key, coef in opt.LAMBDA_DICT.items():
-        value = coef * loss_dict[key]
-        loss += value
+    if args.classify:
+        pred = model.classify(image):
+        loss = nn.CrossEntropyLoss(pred, label)
+
         if (i + 1) % args.log_interval == 0:
-            writer.add_scalar('loss_{:s}'.format(key), value.item(), i + 1)
+                writer.add_scalar('loss_{:s}'.format('pred'), loss.item(), i + 1)
+    else:
+        output, _ = model(image, mask)
+        loss_dict = criterion(image, mask, output, gt)
+
+        loss = 0.0
+        for key, coef in opt.LAMBDA_DICT.items():
+            value = coef * loss_dict[key]
+            loss += value
+            if (i + 1) % args.log_interval == 0:
+                writer.add_scalar('loss_{:s}'.format(key), value.item(), i + 1)
 
     optimizer.zero_grad()
     loss.backward()
@@ -128,7 +148,10 @@ for i in tqdm(range(start_iter, args.max_iter)):
 
     if (i + 1) % args.vis_interval == 0:
         model.eval()
-        evaluate(model, dataset_val, device,
-                 '{:s}/images/test_{:d}.jpg'.format(args.save_dir, i + 1))
+        if self.classify:
+            evaluate_acc(model, dataset_val, device, args.batch_size, args.num_workers)
+        else
+            evaluate(model, dataset_val, device,
+                     '{:s}/images/test_{:d}.jpg'.format(args.save_dir, i + 1))
 
 writer.close()
