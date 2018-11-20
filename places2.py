@@ -2,11 +2,11 @@ import random
 import torch
 from PIL import Image
 from glob import glob
-
+import sys
 
 class Places2(torch.utils.data.Dataset):
     def __init__(self, img_root, mask_root, img_transform, mask_transform,
-                 split='train', label_dict=None):
+                 split='train', label_dict=None, no_mask=False):
         super(Places2, self).__init__()
         self.img_transform = img_transform
         self.mask_transform = mask_transform
@@ -18,6 +18,7 @@ class Places2(torch.utils.data.Dataset):
         self.mask_paths = glob('{:s}/*.jpg'.format(mask_root))
         self.N_mask = len(self.mask_paths)
         self.label_dict = label_dict
+        self.no_mask = no_mask
 
     def __getitem__(self, index):
         gt_img = Image.open(self.paths[index])
@@ -25,12 +26,13 @@ class Places2(torch.utils.data.Dataset):
         label = self.paths[index].split('/')[-2]
 
         mask = Image.open(self.mask_paths[random.randint(0, self.N_mask - 1)])
-        mask = self.mask_transform(mask.convert('RGB'))
-
-        if self.label_dict == None:
-            return gt_img * mask, mask, gt_img, torch.FloatTensor(0)
+        mask = self.mask_transform(mask.convert('RGB')) if not self.no_mask \
+            else torch.ones_like(gt_img)
+        
+        if self.no_mask:
+            return gt_img , mask, gt_img, self.label_dict[label]
         else:
-            return gt_img * mask, mask, gt_img, torch.FloatTensor(self.label_dict[label]) 
+            return gt_img * mask, mask, gt_img, self.label_dict[label]
 
     def __len__(self):
         return len(self.paths)

@@ -16,8 +16,10 @@ from net import VGG16FeatureExtractor
 from places2 import Places2
 from util.io import load_ckpt
 from util.io import save_ckpt
+from util.data_loader import DataSampler
 
 import json
+import sys
 
 class InfiniteSampler(data.sampler.Sampler):
     def __init__(self, num_samples):
@@ -44,15 +46,15 @@ class InfiniteSampler(data.sampler.Sampler):
 parser = argparse.ArgumentParser()
 # training options
 parser.add_argument('--root', type=str, default='/srv/datasets/Places2')
-parser.add_argument('--mask_root', type=str, default='./masks')
+parser.add_argument('--mask_root', type=str, default='./mask')
 parser.add_argument('--save_dir', type=str, default='./snapshots/default')
 parser.add_argument('--log_dir', type=str, default='./logs/default')
 parser.add_argument('--lr', type=float, default=2e-4)
 parser.add_argument('--lr_finetune', type=float, default=5e-5)
 parser.add_argument('--max_iter', type=int, default=1000000)
 parser.add_argument('--batch_size', type=int, default=16)
-parser.add_argument('--n_threads', type=int, default=16)
-parser.add_argument('--save_model_interval', type=int, default=50000)
+parser.add_argument('--n_threads', type=int, default=4)
+parser.add_argument('--save_model_interval', type=int, default=10000)
 parser.add_argument('--vis_interval', type=int, default=5000)
 parser.add_argument('--log_interval', type=int, default=10)
 parser.add_argument('--image_size', type=int, default=256)
@@ -80,22 +82,28 @@ img_tf = transforms.Compose(
 mask_tf = transforms.Compose(
     [transforms.Resize(size=size), transforms.ToTensor()])
 
-if args.classify:
-    src = os.path.join(args.root, 'dict.json')
-    with open(src) as fr:
-        label_dict = json.load(fr.read())
-else:
-    label_dict = None
 
-dataset_train = Places2(args.root, args.mask_root, img_tf, mask_tf, 'train', label_dict)
-dataset_val = Places2(args.root, args.mask_root, img_tf, mask_tf, 'val', label_dict)
+src = os.path.join(args.root, 'dict.json')
+with open(src) as fr:
+    label_dict = json.loads(fr.read())
+
+
+dataset_train = Places2(args.root, args.mask_root, img_tf, mask_tf, 'train', label_dict, args.classify)
+dataset_val = Places2(args.root, args.mask_root, img_tf, mask_tf, 'val', label_dict, args.classify)
 
 iterator_train = iter(data.DataLoader(
     dataset_train, batch_size=args.batch_size,
     sampler=InfiniteSampler(len(dataset_train)),
     num_workers=args.n_threads))
 print(len(dataset_train))
-model = PConvUNet().to(device)
+
+val_sampler = DataSampler(dataset_val)
+val_loader = data.DataLoader(
+            dataset_val, batch_size=args.batch_size, shuffle=False,
+            num_workers=args.n_threads, pin_memory=False, sampler=val_sampler)
+
+model = PConvUNet(class_num=len(label_dict)).to(device)
+
 
 if args.finetune:
     lr = args.lr_finetune
@@ -122,11 +130,11 @@ for i in tqdm(range(start_iter, args.max_iter)):
     image, mask, gt, label = [x.to(device) for x in next(iterator_train)]
 
     if args.classify:
-        pred = model.classify(image):
-        loss = nn.CrossEntropyLoss(pred, label)
+        pred = model.classify(image)
+        loss = criterion(pred, label)
 
         if (i + 1) % args.log_interval == 0:
-                writer.add_scalar('loss_{:s}'.format('pred'), loss.item(), i + 1)
+            writer.add_scalar('loss_{:s}'.format('pred'), loss.item(), i + 1)
     else:
         output, _ = model(image, mask)
         loss_dict = criterion(image, mask, output, gt)
@@ -149,8 +157,8 @@ for i in tqdm(range(start_iter, args.max_iter)):
     if (i + 1) % args.vis_interval == 0:
         model.eval()
         if self.classify:
-            evaluate_acc(model, dataset_val, device, args.batch_size, args.num_workers)
-        else
+            evaluate_acc(model, val_loader, device)
+        else:
             evaluate(model, dataset_val, device,
                      '{:s}/images/test_{:d}.jpg'.format(args.save_dir, i + 1))
 

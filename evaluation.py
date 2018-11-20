@@ -3,7 +3,6 @@ from torchvision.utils import make_grid
 from torchvision.utils import save_image
 
 from util.image import unnormalize
-from util.data_loader import DataSampler
 
 def correct_cnt(output, target):
     """Computes the precision@k for the specified values of k"""
@@ -33,13 +32,7 @@ def evaluate(model, dataset, device, filename):
                    unnormalize(output_comp), unnormalize(gt)), dim=0))
     save_image(grid, filename)
 
-def evaluate_acc(model, dataset, device, batch_size=32, threads=1):
-    model.eval()
-
-    val_sampler = DataSampler(dataset)
-    val_loader = DataLoader(
-                dataset, batch_size=batch_size, shuffle=False,
-                num_workers=threads, pin_memory=False, sampler=val_sampler)
+def evaluate_acc(model, val_loader, device, batch_size=32, threads=1):
 
     correct_cnt, total_cnt = 0.0, 0.0
 

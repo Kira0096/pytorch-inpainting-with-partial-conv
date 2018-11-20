@@ -1,5 +1,7 @@
 *.txt
 logs
 snapshots
-masks
+mask*
 .idea
+*_pycache_*
+*sh
