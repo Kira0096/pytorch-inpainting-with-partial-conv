@@ -121,6 +121,46 @@ class PCBActiv(nn.Module):
             h = self.activation(h)
         return h, h_mask
 
+class PConvGeneralNet(nn.Module):
+    def __init__(self, model, down_sample_layers):
+        self.base_model = model
+        self.down_sample_layers = down_sample_layers
+        self.layer_size = len(down_sample_layers)
+
+    def forward(self, input, input_mask):
+        h_dict = {}  # for the output of enc_N
+        h_mask_dict = {}  # for the output of enc_N
+
+        h_dict['h_0'], h_mask_dict['h_0'] = input, input_mask
+
+        h, h_mask = self.model(input, input_mask)
+
+        for i in range(1, self.layer_size + 1):
+            l_key = 'enc_{:d}'.format(i)
+            h_key = 'h_{:d}'.format(i)
+            h_dict[h_key], h_mask_dict[h_key] = getattr(self.model, self.down_sample_layers[i - 1])
+
+        h_key = 'h_{:d}'.format(self.layer_size)
+        h, h_mask = h_dict[h_key], h_mask_dict[h_key]
+
+        # concat upsampled output of h_enc_N-1 and dec_N+1, then do dec_N
+        # (exception)
+        #                            input         dec_2            dec_1
+        #                            h_enc_7       h_enc_8          dec_8
+
+        for i in range(self.layer_size, 0, -1):
+            enc_h_key = 'h_{:d}'.format(i - 1)
+            dec_l_key = 'dec_{:d}'.format(i)
+
+            h = F.interpolate(h, scale_factor=2, mode=self.upsampling_mode)
+            h_mask = F.interpolate(
+                h_mask, scale_factor=2, mode='nearest')
+
+            h = torch.cat([h, h_dict[enc_h_key]], dim=1)
+            h_mask = torch.cat([h_mask, h_mask_dict[enc_h_key]], dim=1)
+            h, h_mask = getattr(self, dec_l_key)(h, h_mask)
+
+        return h, h_mask
 
 class PConvUNet(nn.Module):
     def __init__(self, layer_size=7, input_channels=3, upsampling_mode='nearest'):
@@ -180,6 +220,28 @@ class PConvUNet(nn.Module):
             h, h_mask = getattr(self, dec_l_key)(h, h_mask)
 
         return h, h_mask
+
+    def classify(self, input):
+
+        input_mask = torch.ones_like(input)
+
+        h_dict = {}  # for the output of enc_N
+        h_mask_dict = {}  # for the output of enc_N
+
+        h_dict['h_0'], h_mask_dict['h_0'] = input, input_mask
+
+        h_key_prev = 'h_0'
+        for i in range(1, self.layer_size + 1):
+            l_key = 'enc_{:d}'.format(i)
+            h_key = 'h_{:d}'.format(i)
+            h_dict[h_key], h_mask_dict[h_key] = getattr(self, l_key)(
+                h_dict[h_key_prev], h_mask_dict[h_key_prev])
+            h_key_prev = h_key
+
+        h_key = 'h_{:d}'.format(self.layer_size)
+        h, h_mask = h_dict[h_key], h_mask_dict[h_key]
+        
+        return self.fc(h)
 
     def train(self, mode=True):
         """

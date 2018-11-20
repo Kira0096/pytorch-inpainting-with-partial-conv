@@ -18,6 +18,7 @@ class Places2(torch.utils.data.Dataset):
         self.mask_paths = glob('{:s}/*.jpg'.format(mask_root))
         self.N_mask = len(self.mask_paths)
         self.label_dict = label_dict
+        self.no_mask = not(self.label_dict == None)
 
     def __getitem__(self, index):
         gt_img = Image.open(self.paths[index])
@@ -25,7 +26,8 @@ class Places2(torch.utils.data.Dataset):
         label = self.paths[index].split('/')[-2]
 
         mask = Image.open(self.mask_paths[random.randint(0, self.N_mask - 1)])
-        mask = self.mask_transform(mask.convert('RGB'))
+        mask = self.mask_transform(mask.convert('RGB')) if not self.no_mask \
+            else torch.ones_like(gt_img)
 
         if self.label_dict == None:
             return gt_img * mask, mask, gt_img, torch.FloatTensor(0)
