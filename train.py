@@ -156,7 +156,7 @@ for i in tqdm(range(start_iter, args.max_iter)):
 
     if (i + 1) % args.vis_interval == 0:
         model.eval()
-        if self.classify:
+        if args.classify:
             evaluate_acc(model, val_loader, device)
         else:
             evaluate(model, dataset_val, device,
