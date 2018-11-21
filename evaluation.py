@@ -4,6 +4,8 @@ from torchvision.utils import save_image
 
 from util.image import unnormalize
 
+import logging
+
 def correct_cnt_(output, target):
     """Computes the precision@k for the specified values of k"""
     
@@ -38,7 +40,7 @@ def evaluate_acc(model, val_loader, device, batch_size=32, threads=1):
 
     for i, (image, mask, gt, label) in enumerate(val_loader):
         image, mask, gt, label = image.to(device), mask.to(device), gt.to(device), label.to(device)
-        pred = model.classify(image)
+        pred = model(image)
         correct_cnt += correct_cnt_(pred, label)
         total_cnt += image.shape[0]
 

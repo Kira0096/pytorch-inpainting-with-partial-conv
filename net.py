@@ -184,8 +184,36 @@ class PConvUNet(nn.Module):
         self.dec_2 = PCBActiv(128 + 64, 64, activ='leaky')
         self.dec_1 = PCBActiv(64 + input_channels, input_channels,
                               bn=False, activ=None, conv_bias=True)
+        self.classify_mode = False
+    
+    def classify(self):
+        self.classify_mode = True
 
-    def forward(self, input, input_mask):
+    def _classify(self, input):
+
+        input_mask = torch.ones_like(input)
+
+        h_dict = {}  # for the output of enc_N
+        h_mask_dict = {}  # for the output of enc_N
+
+        h_dict['h_0'], h_mask_dict['h_0'] = input, input_mask
+
+        h_key_prev = 'h_0'
+        for i in range(1, self.layer_size + 1):
+            l_key = 'enc_{:d}'.format(i)
+            h_key = 'h_{:d}'.format(i)
+            h_dict[h_key], h_mask_dict[h_key] = getattr(self, l_key)(
+                h_dict[h_key_prev], h_mask_dict[h_key_prev])
+            h_key_prev = h_key
+
+        h_key = 'h_{:d}'.format(self.layer_size)
+        h, h_mask = h_dict[h_key], h_mask_dict[h_key]
+        
+        return self.fc(h.view(h.shape[0], -1))
+
+    def forward(self, input, input_mask=None):
+        if self.classify_mode:
+            return self._classify(input)
         h_dict = {}  # for the output of enc_N
         h_mask_dict = {}  # for the output of enc_N
 
@@ -221,27 +249,7 @@ class PConvUNet(nn.Module):
 
         return h, h_mask
 
-    def classify(self, input):
-
-        input_mask = torch.ones_like(input)
-
-        h_dict = {}  # for the output of enc_N
-        h_mask_dict = {}  # for the output of enc_N
-
-        h_dict['h_0'], h_mask_dict['h_0'] = input, input_mask
-
-        h_key_prev = 'h_0'
-        for i in range(1, self.layer_size + 1):
-            l_key = 'enc_{:d}'.format(i)
-            h_key = 'h_{:d}'.format(i)
-            h_dict[h_key], h_mask_dict[h_key] = getattr(self, l_key)(
-                h_dict[h_key_prev], h_mask_dict[h_key_prev])
-            h_key_prev = h_key
-
-        h_key = 'h_{:d}'.format(self.layer_size)
-        h, h_mask = h_dict[h_key], h_mask_dict[h_key]
-        
-        return self.fc(h.view(h.shape[0], -1))
+    
 
     def train(self, mode=True):
         """

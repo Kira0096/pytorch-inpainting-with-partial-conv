@@ -7,6 +7,7 @@ from tensorboardX import SummaryWriter
 from torch.utils import data
 from torchvision import transforms
 from tqdm import tqdm
+import logging
 
 import opt
 from evaluation import evaluate, evaluate_acc
@@ -16,7 +17,7 @@ from net import VGG16FeatureExtractor
 from places2 import Places2
 from util.io import load_ckpt
 from util.io import save_ckpt
-from util.data_loader import DataSampler
+from util.data_loader import DataSampler, GivenIterationSampler, create_logger
 
 import json
 import sys
@@ -88,22 +89,10 @@ with open(src) as fr:
     label_dict = json.loads(fr.read())
 
 
-dataset_train = Places2(args.root, args.mask_root, img_tf, mask_tf, 'train', label_dict, args.classify)
-dataset_val = Places2(args.root, args.mask_root, img_tf, mask_tf, 'val', label_dict, args.classify)
-
-iterator_train = iter(data.DataLoader(
-    dataset_train, batch_size=args.batch_size,
-    sampler=InfiniteSampler(len(dataset_train)),
-    num_workers=args.n_threads))
-print(len(dataset_train))
-
-val_sampler = DataSampler(dataset_val)
-val_loader = data.DataLoader(
-            dataset_val, batch_size=args.batch_size, shuffle=False,
-            num_workers=args.n_threads, pin_memory=False, sampler=val_sampler)
-
 model = PConvUNet(class_num=len(label_dict)).to(device)
 
+if args.classify:
+    model.classify()
 
 if args.finetune:
     lr = args.lr_finetune
@@ -124,17 +113,42 @@ if args.resume:
         param_group['lr'] = lr
     print('Starting from iter ', start_iter)
 
-for i in tqdm(range(start_iter, args.max_iter)):
+dataset_train = Places2(args.root, args.mask_root, img_tf, mask_tf, 'train', label_dict, args.classify)
+dataset_val = Places2(args.root, args.mask_root, img_tf, mask_tf, 'val', label_dict, args.classify)
+
+train_loader = data.DataLoader(
+    dataset_train, batch_size=args.batch_size,
+    sampler=GivenIterationSampler(dataset_train, args.max_iter, args.batch_size),
+    num_workers=args.n_threads)
+print(len(dataset_train))
+
+val_sampler = DataSampler(dataset_val)
+val_loader = data.DataLoader(
+            dataset_val, batch_size=args.batch_size, shuffle=False,
+            num_workers=args.n_threads, pin_memory=False, sampler=val_sampler)
+
+
+
+logger = create_logger('global_logger', args.log_dir+'/log.txt')
+
+# logger = logging.getLogger('global_logger')
+
+# for i in tqdm(range(start_iter, args.max_iter)):
+for i, (image, mask, gt, label) in enumerate(train_loader):
     model.train()
 
-    image, mask, gt, label = [x.to(device) for x in next(iterator_train)]
+    image, mask, gt, label = image.to(device), mask.to(device), gt.to(device), label.to(device)
 
     if args.classify:
-        pred = model.classify(image)
+        # pred = model.classify(image)
+        pred = model(image)
         loss = criterion(pred, label)
 
         if (i + 1) % args.log_interval == 0:
             writer.add_scalar('loss_{:s}'.format('pred'), loss.item(), i + 1)
+
+            logger.info('Iter: %d\tLoss %.4f' % (i, loss))
+
     else:
         output, _ = model(image, mask)
         loss_dict = criterion(image, mask, output, gt)
@@ -145,6 +159,7 @@ for i in tqdm(range(start_iter, args.max_iter)):
             loss += value
             if (i + 1) % args.log_interval == 0:
                 writer.add_scalar('loss_{:s}'.format(key), value.item(), i + 1)
+                logger.info('Iter: %d\tLoss_%s %.4f' % (i, key, value.item()))
 
     optimizer.zero_grad()
     loss.backward()
@@ -157,7 +172,8 @@ for i in tqdm(range(start_iter, args.max_iter)):
     if (i + 1) % args.vis_interval == 0:
         model.eval()
         if args.classify:
-            evaluate_acc(model, val_loader, device)
+            acc = evaluate_acc(model, val_loader, device)
+            logger.info('Iter: %d\tAcc %.4f' % (i, acc))
         else:
             evaluate(model, dataset_val, device,
                      '{:s}/images/test_{:d}.jpg'.format(args.save_dir, i + 1))
