@@ -1,4 +1,4 @@
-# pytorch-inpainting-with-partial-conv
+# pytorch-inpainting-with-partial-conv  
 
 **Note that this is an ongoing re-implementation and I cannot fully reproduce the results. Suggestions and PRs are welcome!**
 
