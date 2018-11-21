@@ -120,7 +120,7 @@ dataset_val = Places2(args.root, args.mask_root, img_tf, mask_tf, 'val', label_d
 
 train_loader = data.DataLoader(
     dataset_train, batch_size=args.batch_size,
-    sampler=GivenIterationSampler(dataset_train, args.max_iter, args.batch_size),
+    sampler=GivenIterationSampler(dataset_train, args.max_iter, args.batch_size, start_iter),
     num_workers=args.n_threads)
 print(len(dataset_train))
 
@@ -137,6 +137,7 @@ logger = create_logger('global_logger', args.log_dir+'/log.txt')
 
 # for i in tqdm(range(start_iter, args.max_iter)):
 for i, (image, mask, gt, label) in enumerate(train_loader):
+    cur_step = i + start_iter
     model.train()
 
     image, mask, gt, label = image.to(device), mask.to(device), gt.to(device), label.to(device)
@@ -146,10 +147,10 @@ for i, (image, mask, gt, label) in enumerate(train_loader):
         pred = model(image)
         loss = criterion(pred, label)
 
-        if (i + 1) % args.log_interval == 0:
-            writer.add_scalar('loss_{:s}'.format('pred'), loss.item(), i + 1)
+        if (cur_step + 1) % args.log_interval == 0:
+            writer.add_scalar('loss_{:s}'.format('pred'), loss.item(), cur_step + 1)
 
-            logger.info('Iter: %d\tLoss %.4f' % (i, loss))
+            logger.info('Iter: %d\tLoss %.4f' % (cur_step, loss))
 
     else:
         output, _ = model(image, mask)
@@ -159,26 +160,26 @@ for i, (image, mask, gt, label) in enumerate(train_loader):
         for key, coef in opt.LAMBDA_DICT.items():
             value = coef * loss_dict[key]
             loss += value
-            if (i + 1) % args.log_interval == 0:
-                writer.add_scalar('loss_{:s}'.format(key), value.item(), i + 1)
-                logger.info('Iter: %d\tLoss_%s %.4f' % (i, key, value.item()))
+            if (cur_step + 1) % args.log_interval == 0:
+                writer.add_scalar('loss_{:s}'.format(key), value.item(), cur_step + 1)
+                logger.info('Iter: %d\tLoss_%s %.4f' % (cur_step, key, value.item()))
 
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
 
-    if (i + 1) % args.save_model_interval == 0 or (i + 1) == args.max_iter:
-        save_ckpt('{:s}/ckpt/{:d}.pth'.format(args.save_dir, i + 1),
-                  [('model', model)], [('optimizer', optimizer)], i + 1)
+    if (cur_step + 1) % args.save_model_interval == 0 or (cur_step + 1) == args.max_iter:
+        save_ckpt('{:s}/ckpt/{:d}.pth'.format(args.save_dir, cur_step + 1),
+                  [('model', model)], [('optimizer', optimizer)], cur_step + 1)
 
-    if (i + 1) % args.vis_interval == 0:
+    if (cur_step + 1) % args.vis_interval == 0:
         model.eval()
         if args.classify:
             acc = evaluate_acc(model, val_loader, device)
-            writer.add_scalar('test_acc', acc, i + 1)
-            logger.info('Iter: %d\tAcc %.4f' % (i, acc))
+            writer.add_scalar('test_acc', acc, cur_step + 1)
+            logger.info('Iter: %d\tAcc %.4f' % (cur_step, acc))
         else:
             evaluate(model, dataset_val, device,
-                     '{:s}/images/test_{:d}.jpg'.format(args.save_dir, i + 1))
+                     '{:s}/images/test_{:d}.jpg'.format(args.save_dir, cur_step + 1))
 
 writer.close()
