@@ -9,7 +9,7 @@ from torchvision import transforms
 from tqdm import tqdm
 
 import opt
-from evaluation import evaluate
+from evaluation import evaluate, evaluate_acc
 from loss import InpaintingLoss
 from net import PConvUNet
 from net import VGG16FeatureExtractor
