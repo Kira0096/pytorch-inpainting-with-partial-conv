@@ -173,6 +173,7 @@ for i, (image, mask, gt, label) in enumerate(train_loader):
         model.eval()
         if args.classify:
             acc = evaluate_acc(model, val_loader, device)
+            writer.add_scalar('test_acc', acc, i + 1)
             logger.info('Iter: %d\tAcc %.4f' % (i, acc))
         else:
             evaluate(model, dataset_val, device,
