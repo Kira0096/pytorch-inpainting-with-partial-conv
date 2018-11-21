@@ -24,10 +24,14 @@ python generate_data.py
 ```
 
 ### Train
+Train for the inpainting task
 ```
-CUDA_VISIBLE_DEVICES=<gpu_id> python train.py
+CUDA_VISIBLE_DEVICES=<gpu_id> python train.py --root DATA_PATH 
 ```
-
+Train for the classify task
+```
+CUDA_VISIBLE_DEVICES=<gpu_id> python train.py --root DATA_PATH --classify
+```
 ### Fine-tune
 ```
 CUDA_VISIBLE_DEVICES=<gpu_id> python train.py --finetune --resume <checkpoint_name>
