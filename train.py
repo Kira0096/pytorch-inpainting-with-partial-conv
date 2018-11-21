@@ -14,6 +14,7 @@ from evaluation import evaluate, evaluate_acc
 from loss import InpaintingLoss
 from net import PConvUNet
 from net import VGG16FeatureExtractor
+from models.resnet import resnet34
 from places2 import Places2
 from util.io import load_ckpt
 from util.io import save_ckpt
@@ -89,7 +90,8 @@ with open(src) as fr:
     label_dict = json.loads(fr.read())
 
 
-model = PConvUNet(class_num=len(label_dict)).to(device)
+# model = PConvUNet(class_num=len(label_dict)).to(device)
+model = resnet34(num_classes=len(label_dict), pretrained=True).to(device)
 
 if args.classify:
     model.classify()
