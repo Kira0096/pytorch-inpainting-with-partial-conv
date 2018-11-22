@@ -215,7 +215,8 @@ class ResNet(nn.Module):
         x3 = self.layer2(x)
         x4 = self.layer3(x3)
         x5 = self.layer4(x4)
-
+        x5 = self.att4(x5)
+        
         x = self.relu(self.bn5(self.conv5(x5)))
         x = self.relu(self.bn6(self.conv6(x + x4)))
         x = self.relu(self.bn7(self.conv7(x + x3)))
