@@ -63,6 +63,7 @@ parser.add_argument('--image_size', type=int, default=256)
 parser.add_argument('--resume', type=str)
 parser.add_argument('--finetune', action='store_true')
 parser.add_argument('--classify', action='store_true')
+parser.add_argument('--attention', action='store_true')
 
 args = parser.parse_args()
 
@@ -91,7 +92,7 @@ with open(src) as fr:
 
 
 # model = PConvUNet(class_num=len(label_dict)).to(device)
-model = resnet34(num_classes=len(label_dict), pretrained=True).to(device)
+model = resnet34(num_classes=len(label_dict), pretrained=True, attention=args.attention).to(device)
 
 if args.classify:
     model.classify()

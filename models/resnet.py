@@ -120,11 +120,11 @@ class Bottleneck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_classes=1000, num_downsample=2):
+    def __init__(self, block, layers, num_classes=1000, num_downsample=2, attention=False):
         super(ResNet, self).__init__()
         self.num_downsample = num_downsample
         self.output_dim = 64 * (2 ** (num_downsample - 2))
-
+        self.attention = attention
         self.inplanes = 64
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
                                bias=False)
@@ -135,7 +135,8 @@ class ResNet(nn.Module):
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
-        self.att4 = NONLocalBlock2D(in_channels=512)
+        if self.attention:
+            self.att4 = NONLocalBlock2D(in_channels=512)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         # self.fc = nn.Linear(512 * block.expansion, num_classes)
         self.fc_ = nn.Linear(512 * block.expansion, num_classes)
@@ -194,7 +195,8 @@ class ResNet(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-        x = self.att4(x)
+        if self.attention:
+            x = self.att4(x)
 
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
@@ -215,7 +217,8 @@ class ResNet(nn.Module):
         x3 = self.layer2(x)
         x4 = self.layer3(x3)
         x5 = self.layer4(x4)
-        x5 = self.att4(x5)
+        if self.attention:
+            x5 = self.att4(x5)
         
         x = self.relu(self.bn5(self.conv5(x5)))
         x = self.relu(self.bn6(self.conv6(x + x4)))
